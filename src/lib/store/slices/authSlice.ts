@@ -11,26 +11,19 @@ interface AuthState {
   user: User | null;
   token: string | null;
   isAuthenticated: boolean;
+  _initialized: boolean;
 }
 
-const loadInitialState = (): AuthState => {
-  if (typeof window === "undefined") {
-    return { user: null, token: null, isAuthenticated: false };
-  }
-
-  const token = localStorage.getItem("token");
-  const userStr = localStorage.getItem("user");
-
-  return {
-    user: userStr ? JSON.parse(userStr) : null,
-    token,
-    isAuthenticated: !!token,
-  };
+const initialState: AuthState = {
+  user: null,
+  token: null,
+  isAuthenticated: false,
+  _initialized: false,
 };
 
 const authSlice = createSlice({
   name: "auth",
-  initialState: loadInitialState(),
+  initialState,
   reducers: {
     setCredentials: (
       state,
@@ -40,20 +33,41 @@ const authSlice = createSlice({
       state.user = user;
       state.token = token;
       state.isAuthenticated = true;
+      state._initialized = true;
 
-      localStorage.setItem("token", token);
-      localStorage.setItem("user", JSON.stringify(user));
+      // Only run on client side
+      if (typeof window !== "undefined") {
+        localStorage.setItem("token", token);
+        localStorage.setItem("user", JSON.stringify(user));
+      }
     },
     logout: (state) => {
       state.user = null;
       state.token = null;
       state.isAuthenticated = false;
+      state._initialized = true;
 
-      localStorage.removeItem("token");
-      localStorage.removeItem("user");
+      if (typeof window !== "undefined") {
+        localStorage.removeItem("token");
+        localStorage.removeItem("user");
+      }
+    },
+    initializeAuth: (state) => {
+      if (typeof window !== "undefined") {
+        const token = localStorage.getItem("token");
+        const userStr = localStorage.getItem("user");
+
+        if (token && userStr) {
+          state.token = token;
+          state.user = JSON.parse(userStr);
+          state.isAuthenticated = true;
+        }
+      }
+      state._initialized = true;
     },
   },
 });
 
-export const { setCredentials, logout } = authSlice.actions;
+// Make sure this line exists exactly:
+export const { setCredentials, logout, initializeAuth } = authSlice.actions;
 export default authSlice.reducer;
