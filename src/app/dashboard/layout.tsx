@@ -4,7 +4,7 @@ import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useSelector } from "react-redux";
 import { RootState } from "@/lib/store/store";
-import Navbar from "@/components/shared/Navbar";
+import Navbar from "../../../components/shared/Navbar";
 
 export default function DashboardLayout({
   children,
