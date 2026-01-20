@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -13,56 +13,45 @@ import {
   CardTitle,
 } from "@/components/ui/card";
 import { Label } from "@/components/ui/label";
-import { Plus, Trash2, ArrowLeft, Save, X } from "lucide-react";
-import { useCreateWorkflowMutation } from "@/lib/api/workflowApi";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Calendar } from "@/components/ui/calendar";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { CalendarIcon, ArrowLeft, Save, X } from "lucide-react";
+import { format } from "date-fns";
+import { cn } from "@/lib/utils";
+import { useGetWorkflowsQuery } from "@/lib/api/workflowApi";
+import { useCreateTaskMutation } from "@/lib/api/taskApi";
 
-const DEFAULT_COLORS = [
-  "#6B7280", // Gray
-  "#3B82F6", // Blue
-  "#10B981", // Green
-  "#F59E0B", // Yellow
-  "#8B5CF6", // Purple
-  "#EF4444", // Red
-];
-
-export default function CreateWorkflowPage() {
+export default function CreateTaskPage() {
   const router = useRouter();
+  const [date, setDate] = useState<Date>();
   const [loading, setLoading] = useState(false);
-  const [stages, setStages] = useState([
-    { id: "1", name: "Backlog", order: 0, color: DEFAULT_COLORS[0] },
-    { id: "2", name: "To Do", order: 1, color: DEFAULT_COLORS[1] },
-    { id: "3", name: "In Progress", order: 2, color: DEFAULT_COLORS[2] },
-    { id: "4", name: "Review", order: 3, color: DEFAULT_COLORS[3] },
-    { id: "5", name: "Done", order: 4, color: DEFAULT_COLORS[4] },
-  ]);
 
-  const [createWorkflow] = useCreateWorkflowMutation();
+  const {
+    data: workflowsData,
+    isLoading: workflowsLoading,
+    error: workflowsError,
+  } = useGetWorkflowsQuery();
+  const [createTask] = useCreateTaskMutation();
 
-  const addStage = () => {
-    const newStage = {
-      id: Date.now().toString(),
-      name: `Stage ${stages.length + 1}`,
-      order: stages.length,
-      color: DEFAULT_COLORS[stages.length % DEFAULT_COLORS.length],
-    };
-    setStages([...stages, newStage]);
-  };
+  // Debug logging
+  useEffect(() => {
+    console.log("Workflows data:", workflowsData);
+    console.log("Workflows loading:", workflowsLoading);
+    console.log("Workflows error:", workflowsError);
+  }, [workflowsData, workflowsLoading, workflowsError]);
 
-  const removeStage = (id: string) => {
-    if (stages.length <= 2) return;
-    const updatedStages = stages
-      .filter((stage) => stage.id !== id)
-      .map((stage, index) => ({ ...stage, order: index }));
-    setStages(updatedStages);
-  };
-
-  const updateStage = (id: string, field: string, value: string) => {
-    setStages(
-      stages.map((stage) =>
-        stage.id === id ? { ...stage, [field]: value } : stage,
-      ),
-    );
-  };
+  const workflows = workflowsData?.data || [];
 
   const handleSubmit = async (e: React.FormEvent<HTMLFormElement>) => {
     e.preventDefault();
@@ -70,18 +59,26 @@ export default function CreateWorkflowPage() {
 
     const formData = new FormData(e.currentTarget);
 
-    const workflowData = {
-      name: formData.get("name") as string,
+    const taskData = {
+      title: formData.get("title") as string,
       description: formData.get("description") as string,
-      stages: stages,
-      isDefault: formData.get("isDefault") === "on",
+      priority: formData.get("priority") as "low" | "medium" | "high",
+      workflowId: formData.get("workflowId") as string,
+      dueDate: date ? date.toISOString() : undefined,
+      tags: (formData.get("tags") as string)
+        ?.split(",")
+        .map((tag) => tag.trim())
+        .filter(Boolean),
     };
 
+    console.log("Creating task:", taskData);
+
     try {
-      await createWorkflow(workflowData).unwrap();
-      router.push("/dashboard/workflows");
+      const result = await createTask(taskData).unwrap();
+      console.log("Task created:", result);
+      router.push("/dashboard/tasks");
     } catch (error) {
-      console.error("Failed to create workflow:", error);
+      console.error("Failed to create task:", error);
       setLoading(false);
     }
   };
@@ -96,159 +93,193 @@ export default function CreateWorkflowPage() {
           </Button>
           <div>
             <h1 className="text-3xl font-bold text-gray-900">
-              Create Workflow
+              Create New Task
             </h1>
-            <p className="text-gray-600">Design your custom workflow process</p>
+            <p className="text-gray-600">Add a new task to your workflow</p>
           </div>
         </div>
         <div className="flex space-x-2">
           <Button
             variant="outline"
-            onClick={() => router.push("/dashboard/workflows")}
+            onClick={() => router.push("/dashboard/tasks")}
           >
             <X className="mr-2 h-4 w-4" />
             Cancel
           </Button>
-          <Button type="submit" form="workflow-form" disabled={loading}>
+          <Button type="submit" form="task-form" disabled={loading}>
             <Save className="mr-2 h-4 w-4" />
-            {loading ? "Creating..." : "Create Workflow"}
+            {loading ? "Creating..." : "Create Task"}
           </Button>
         </div>
       </div>
 
-      <form id="workflow-form" onSubmit={handleSubmit}>
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Workflow Details */}
-          <Card className="lg:col-span-2">
-            <CardHeader>
-              <CardTitle>Workflow Details</CardTitle>
-              <CardDescription>
-                Define your workflow name and description
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Task Form */}
+        <Card className="lg:col-span-2">
+          <CardHeader>
+            <CardTitle>Task Details</CardTitle>
+            <CardDescription>
+              Enter all the details for your new task
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form id="task-form" onSubmit={handleSubmit} className="space-y-6">
+              {/* Title */}
               <div className="space-y-2">
-                <Label htmlFor="name">Workflow Name *</Label>
+                <Label htmlFor="title">Task Title *</Label>
                 <Input
-                  id="name"
-                  name="name"
-                  placeholder="e.g., Development Process"
+                  id="title"
+                  name="title"
+                  placeholder="Enter task title"
                   required
                 />
               </div>
 
+              {/* Description */}
               <div className="space-y-2">
                 <Label htmlFor="description">Description</Label>
                 <Textarea
                   id="description"
                   name="description"
-                  placeholder="Describe this workflow process..."
-                  rows={4}
+                  placeholder="Describe the task in detail..."
+                  rows={5}
                 />
               </div>
 
-              <div className="flex items-center space-x-2">
-                <input
-                  type="checkbox"
-                  id="isDefault"
-                  name="isDefault"
-                  className="h-4 w-4 rounded border-gray-300"
-                />
-                <Label htmlFor="isDefault">Set as default workflow</Label>
-              </div>
-            </CardContent>
-          </Card>
-
-          {/* Stages */}
-          <Card>
-            <CardHeader>
-              <CardTitle>Stages</CardTitle>
-              <CardDescription>
-                Add and configure workflow stages
-              </CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-4">
-                {stages.map((stage, index) => (
-                  <div
-                    key={stage.id}
-                    className="flex items-center space-x-2 p-3 bg-gray-50 rounded-lg"
-                  >
-                    <div
-                      className="h-6 w-6 rounded border"
-                      style={{ backgroundColor: stage.color }}
-                    />
-                    <div className="flex-1">
-                      <Input
-                        value={stage.name}
-                        onChange={(e) =>
-                          updateStage(stage.id, "name", e.target.value)
-                        }
-                        className="text-sm"
-                      />
-                    </div>
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeStage(stage.id)}
-                      disabled={stages.length <= 2}
-                      className="h-8 w-8"
-                    >
-                      <Trash2 className="h-4 w-4" />
-                    </Button>
-                  </div>
-                ))}
-
-                <Button
-                  type="button"
-                  variant="outline"
-                  onClick={addStage}
-                  className="w-full"
-                >
-                  <Plus className="mr-2 h-4 w-4" />
-                  Add Stage
-                </Button>
-              </div>
-            </CardContent>
-          </Card>
-        </div>
-      </form>
-
-      {/* Preview */}
-      <Card>
-        <CardHeader>
-          <CardTitle>Workflow Preview</CardTitle>
-          <CardDescription>How your workflow will look</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="flex overflow-x-auto pb-4 space-x-4">
-            {stages.map((stage) => (
-              <div
-                key={stage.id}
-                className="flex-shrink-0 w-64 p-4 rounded-lg border"
-                style={{
-                  borderColor: stage.color,
-                  backgroundColor: `${stage.color}10`,
-                }}
-              >
-                <div className="flex items-center justify-between mb-3">
-                  <h3 className="font-semibold">{stage.name}</h3>
-                  <div
-                    className="h-3 w-3 rounded-full"
-                    style={{ backgroundColor: stage.color }}
-                  />
-                </div>
+              {/* Priority and Workflow */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-2">
-                  <div className="h-2 bg-gray-200 rounded"></div>
-                  <div className="h-2 bg-gray-200 rounded w-3/4"></div>
-                  <div className="h-2 bg-gray-200 rounded w-1/2"></div>
+                  <Label htmlFor="priority">Priority</Label>
+                  <Select name="priority" defaultValue="medium">
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select priority" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="low">Low</SelectItem>
+                      <SelectItem value="medium">Medium</SelectItem>
+                      <SelectItem value="high">High</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+
+                <div className="space-y-2">
+                  <Label htmlFor="workflowId">Workflow *</Label>
+                  <Select
+                    name="workflowId"
+                    required
+                    disabled={workflowsLoading}
+                  >
+                    <SelectTrigger>
+                      <SelectValue
+                        placeholder={
+                          workflowsLoading
+                            ? "Loading workflows..."
+                            : "Select workflow"
+                        }
+                      />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {workflowsLoading ? (
+                        <SelectItem value="loading" disabled>
+                          Loading workflows...
+                        </SelectItem>
+                      ) : workflows.length === 0 ? (
+                        <SelectItem value="none" disabled>
+                          No workflows available. Create one first.
+                        </SelectItem>
+                      ) : (
+                        workflows.map((workflow) => (
+                          <SelectItem key={workflow._id} value={workflow._id}>
+                            {workflow.name} {workflow.isDefault && "(Default)"}
+                          </SelectItem>
+                        ))
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {workflowsError && (
+                    <p className="text-sm text-red-600">
+                      Error loading workflows
+                    </p>
+                  )}
+                  {workflows.length === 0 && !workflowsLoading && (
+                    <p className="text-sm text-amber-600">
+                      No workflows found. Please create a workflow first.
+                    </p>
+                  )}
                 </div>
               </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+
+              {/* Due Date */}
+              <div className="space-y-2">
+                <Label>Due Date</Label>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className={cn(
+                        "w-full justify-start text-left font-normal",
+                        !date && "text-muted-foreground",
+                      )}
+                    >
+                      <CalendarIcon className="mr-2 h-4 w-4" />
+                      {date ? format(date, "PPP") : "Pick a date"}
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-auto p-0">
+                    <Calendar
+                      mode="single"
+                      selected={date}
+                      onSelect={setDate}
+                      initialFocus
+                    />
+                  </PopoverContent>
+                </Popover>
+              </div>
+
+              {/* Tags */}
+              <div className="space-y-2">
+                <Label htmlFor="tags">Tags</Label>
+                <Input
+                  id="tags"
+                  name="tags"
+                  placeholder="frontend, backend, bug, feature (comma separated)"
+                />
+                <p className="text-xs text-gray-500">
+                  Separate tags with commas
+                </p>
+              </div>
+            </form>
+          </CardContent>
+        </Card>
+
+        {/* Sidebar - Help Info */}
+        <Card>
+          <CardHeader>
+            <CardTitle>Quick Tips</CardTitle>
+          </CardHeader>
+          <CardContent className="space-y-4">
+            <div className="space-y-2">
+              <h3 className="font-medium">Workflow Required</h3>
+              <ul className="text-sm text-gray-600 space-y-1">
+                <li>• You need at least one workflow</li>
+                <li>• Go to Workflows page to create</li>
+                <li>• Default workflow is recommended</li>
+              </ul>
+            </div>
+
+            <div className="space-y-2">
+              <h3 className="font-medium">Need a Workflow?</h3>
+              <Button
+                variant="outline"
+                className="w-full"
+                onClick={() => router.push("/dashboard/workflows/create")}
+              >
+                Create Workflow First
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }

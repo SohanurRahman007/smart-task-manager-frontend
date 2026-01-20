@@ -25,6 +25,14 @@ export interface WorkflowsResponse {
   data: Workflow[];
 }
 
+export interface CreateWorkflowRequest {
+  name: string;
+  description?: string;
+  stages: WorkflowStage[];
+  isDefault?: boolean;
+  projectId?: string;
+}
+
 export const workflowApi = api.injectEndpoints({
   endpoints: (builder) => ({
     // Get all workflows
@@ -45,7 +53,7 @@ export const workflowApi = api.injectEndpoints({
     // Create workflow
     createWorkflow: builder.mutation<
       { success: boolean; data: Workflow },
-      Partial<Workflow>
+      CreateWorkflowRequest
     >({
       query: (workflowData) => ({
         url: "/workflows",
